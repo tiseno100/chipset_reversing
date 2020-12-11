@@ -8,7 +8,7 @@ Status of the chipsets
 Chipset|File|Status
 -|-|-
 Micronics MIC 471(486)|mic471.c|For now it doesn't work at all. It's shadowing procedure requires more understanding.
-Macronix MCIX 307(386/486)|mcix307.c|Works fine with MR and AMI boards.
+Macronix MXIC 307(386/486)|mxic307.c|Works fine with MR and AMI boards.
 ALi Alladin(Pentium)|ali_alladin.c|Works alright but it's still quite incomplete and requires more understanding. Good thing is the Alladin 3 datasheet exists, allowing us to see some of it's registers as they're not different that much.
 
 __Potentially upcoming Chipsets__
