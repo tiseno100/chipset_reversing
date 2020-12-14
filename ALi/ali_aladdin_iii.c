@@ -25,6 +25,7 @@
 #include <86box/io.h>
 #include <86box/timer.h>
 
+#include <86box/apm.h>
 #include <86box/hdc.h>
 #include <86box/hdc_ide.h>
 #include <86box/mem.h>
@@ -37,10 +38,10 @@
 typedef struct aladdin_iii_t
 {
     uint8_t pci_conf[3][256];
-    uint8_t smiajt;
 
     smram_t *smram;
     port_92_t *port_92;
+    apm_t *apm;
 } aladdin_iii_t;
 
 static void
@@ -159,10 +160,10 @@ static void
 aladdin_iii_sb_write(int func, int addr, uint8_t val, void *priv)
 {
     aladdin_iii_t *dev = (aladdin_iii_t *)priv;
-    dev->pci_conf[1][addr] = val;
 
     if (!func)
     {
+        dev->pci_conf[1][addr] = val;
         switch (addr)
         {
         case 0x43:
@@ -192,8 +193,8 @@ aladdin_iii_sb_write(int func, int addr, uint8_t val, void *priv)
             pci_set_irq_routing(8, (val & 0xf0));
             break;
 
-        case 0x55:
-            dev->smiajt = (val & 0x01);
+        case 0x56:
+            apm_set_do_smi(dev->apm, ((val & 0x10) && (val & 0x40)));
             break;
         }
         pclog("M1523-SB: dev->regs[%02x] = %02x\n", addr, val);
@@ -260,10 +261,12 @@ aladdin_iii_reset(void *priv)
     aladdin_iii_sb_write(0, 0x49, 0x00, dev);
     aladdin_iii_sb_write(0, 0x50, 0x00, dev);
     aladdin_iii_sb_write(0, 0x51, 0x00, dev);
+    aladdin_iii_sb_write(0, 0x56, 0x00, dev);
 
     dev->pci_conf[2][0x00] = 0xb9;
     dev->pci_conf[2][0x01] = 0x10;
-    dev->pci_conf[2][0x02] = 0x52;
+    dev->pci_conf[2][0x02] = 0x19;
+    dev->pci_conf[2][0x03] = 0x52;
     dev->pci_conf[2][0x06] = 0x02;
     dev->pci_conf[2][0x07] = 0x80;
     dev->pci_conf[2][0x09] = 0xfa;
@@ -303,6 +306,7 @@ aladdin_iii_init(const device_t *info)
 
     pci_add_card(PCI_ADD_NORTHBRIDGE, aladdin_iii_read, aladdin_iii_write, dev);
     pci_add_card(PCI_ADD_SOUTHBRIDGE, aladdin_iii_sb_read, aladdin_iii_sb_write, dev);
+    dev->apm = device_add(&apm_pci_device);
     dev->smram = smram_add();
     dev->port_92 = device_add(&port_92_pci_device);
     device_add(&ide_pci_2ch_device);
@@ -312,7 +316,7 @@ aladdin_iii_init(const device_t *info)
 }
 
 const device_t ali_aladdin_iii_device = {
-    "ALi Aladdin III",
+    "ALi ALADDiN III",
     DEVICE_PCI,
     0,
     aladdin_iii_init,
