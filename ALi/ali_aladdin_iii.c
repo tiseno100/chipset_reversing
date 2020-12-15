@@ -39,6 +39,8 @@ typedef struct aladdin_iii_t
 {
     uint8_t pci_conf[256], pci_conf_sb[2][256];
 
+    int use_internal_ide;
+
     smram_t *smram;
     port_92_t *port_92;
     apm_t *apm;
@@ -91,16 +93,16 @@ aladdin_iii_ide_handler(aladdin_iii_t *dev)
 {
     ide_pri_disable();
     ide_sec_disable();
-    if (dev->pci_conf_sb[1][0x50] & 0x01)
+
+    if(dev->pci_conf_sb[1][0x50] & 0x01)
     {
         ide_pri_enable();
-        ide_sec_enable();
-
         ide_set_base(0, 0x1f0);
         ide_set_side(0, 0x3f6);
 
-        ide_set_base(1, 0x170);
-        ide_set_side(1, 0x376);
+        ide_sec_enable();
+        ide_set_base(0, 0x170);
+        ide_set_side(0, 0x376);
     }
 }
 
@@ -173,6 +175,10 @@ aladdin_iii_sb_write(int func, int addr, uint8_t val, void *priv)
                 port_92_remove(dev->port_92);
             break;
 
+        case 0x46:
+        dev->use_internal_ide = (val & 0x10);
+        break;
+
         case 0x48:
             pci_set_irq_routing(PCI_INTA, (val & 0x0f));
             pci_set_irq_routing(PCI_INTB, (val & 0xf0));
@@ -202,12 +208,8 @@ aladdin_iii_sb_write(int func, int addr, uint8_t val, void *priv)
     else
     {
         dev->pci_conf_sb[1][addr] = val;
-        switch (addr)
-        {
-        case 0x50:
-            //aladdin_iii_ide_handler(dev);
-            break;
-        }
+        if(dev->use_internal_ide)
+        aladdin_iii_ide_handler(dev);
         pclog("M1523-IDE: dev->regs[%02x] = %02x\n", addr, val);
     }
 }
@@ -225,6 +227,7 @@ aladdin_iii_reset(void *priv)
 {
     aladdin_iii_t *dev = (aladdin_iii_t *)priv;
 
+    /* North Bridge */
     dev->pci_conf[0x00] = 0xb9;
     dev->pci_conf[0x01] = 0x10;
     dev->pci_conf[0x02] = 0x21;
@@ -244,6 +247,7 @@ aladdin_iii_reset(void *priv)
     aladdin_iii_write(0, 0x4e, 0x00, dev);
     aladdin_iii_write(0, 0x4f, 0x00, dev);
 
+    /* South Bridge */
     dev->pci_conf_sb[0][0x00] = 0xb9;
     dev->pci_conf_sb[0][0x01] = 0x10;
     dev->pci_conf_sb[0][0x02] = 0x23;
@@ -254,12 +258,14 @@ aladdin_iii_reset(void *priv)
     dev->pci_conf_sb[0][0x0e] = 0x80;
 
     aladdin_iii_sb_write(0, 0x43, 0x00, dev);
+    aladdin_iii_sb_write(0, 0x46, 0x00, dev);
     aladdin_iii_sb_write(0, 0x48, 0x00, dev);
     aladdin_iii_sb_write(0, 0x49, 0x00, dev);
     aladdin_iii_sb_write(0, 0x50, 0x00, dev);
     aladdin_iii_sb_write(0, 0x51, 0x00, dev);
     aladdin_iii_sb_write(0, 0x56, 0x00, dev);
 
+    /* South Bridge IDE controller */
     dev->pci_conf_sb[1][0x00] = 0xb9;
     dev->pci_conf_sb[1][0x01] = 0x10;
     dev->pci_conf_sb[1][0x02] = 0x19;
@@ -280,9 +286,7 @@ aladdin_iii_reset(void *priv)
     dev->pci_conf_sb[1][0x3d] = 0x01;
     dev->pci_conf_sb[1][0x3e] = 0x02;
     dev->pci_conf_sb[1][0x3f] = 0x04;
-    //ide_pri_disable();
-    //ide_sec_disable();
-    //aladdin_iii_sb_write(1, 0x50, 0x00, dev);
+    aladdin_iii_sb_write(1, 0x50, 0x00, dev);
 }
 
 static void
@@ -306,7 +310,6 @@ aladdin_iii_init(const device_t *info)
     dev->apm = device_add(&apm_pci_device);
     dev->smram = smram_add();
     dev->port_92 = device_add(&port_92_pci_device);
-    device_add(&ide_pci_2ch_device);
 
     aladdin_iii_reset(dev);
     return dev;
