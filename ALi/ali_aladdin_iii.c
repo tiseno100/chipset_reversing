@@ -37,7 +37,7 @@
 
 typedef struct aladdin_iii_t
 {
-    uint8_t pci_conf[3][256];
+    uint8_t pci_conf[256], pci_conf_sb[2][256];
 
     smram_t *smram;
     port_92_t *port_92;
@@ -49,17 +49,17 @@ aladdin_iii_shadow_recalc(aladdin_iii_t *dev)
 {
     for (uint32_t i = 0; i < 8; i++)
     {
-        mem_set_mem_state_both((0xc0000 + (i << 14)), 0x4000, ((dev->pci_conf[0][0x4c] & (1 << i)) ? MEM_READ_INTERNAL : MEM_READ_EXTANY) | ((dev->pci_conf[0][0x4e] & (1 << i)) ? MEM_WRITE_INTERNAL : MEM_WRITE_EXTANY));
-        mem_set_mem_state_both((0xe0000 + (i << 14)), 0x4000, ((dev->pci_conf[0][0x4d] & (1 << i)) ? MEM_READ_INTERNAL : MEM_READ_EXTANY) | ((dev->pci_conf[0][0x4f] & (1 << i)) ? MEM_WRITE_INTERNAL : MEM_WRITE_EXTANY));
+        mem_set_mem_state_both((0xc0000 + (i << 14)), 0x4000, ((dev->pci_conf[0x4c] & (1 << i)) ? MEM_READ_INTERNAL : MEM_READ_EXTANY) | ((dev->pci_conf[0x4e] & (1 << i)) ? MEM_WRITE_INTERNAL : MEM_WRITE_EXTANY));
+        mem_set_mem_state_both((0xe0000 + (i << 14)), 0x4000, ((dev->pci_conf[0x4d] & (1 << i)) ? MEM_READ_INTERNAL : MEM_READ_EXTANY) | ((dev->pci_conf[0x4f] & (1 << i)) ? MEM_WRITE_INTERNAL : MEM_WRITE_EXTANY));
     }
 }
 
 static void
 aladdin_iii_smm_recalc(aladdin_iii_t *dev)
 {
-    if (dev->pci_conf[0][0x48] & 0x01)
+    if (dev->pci_conf[0x48] & 0x01)
     {
-        switch ((dev->pci_conf[0][0x48] >> 1) & 0x07)
+        switch ((dev->pci_conf[0x48] >> 1) & 0x07)
         {
         case 0x00:
             smram_enable(dev->smram, 0xd0000, 0xb0000, 0x10000, 0, 1);
@@ -71,7 +71,7 @@ aladdin_iii_smm_recalc(aladdin_iii_t *dev)
             smram_enable(dev->smram, 0xa0000, 0xa0000, 0x20000, 0, 1);
             break;
         case 0x03:
-            if (!(dev->pci_conf[0][0x47] & 0x04))
+            if (!(dev->pci_conf[0x47] & 0x04))
                 smram_enable(dev->smram, 0xa0000, 0xa0000, 0x20000, 1, 1);
             break;
         case 0x04:
@@ -91,7 +91,7 @@ aladdin_iii_ide_handler(aladdin_iii_t *dev)
 {
     ide_pri_disable();
     ide_sec_disable();
-    if (dev->pci_conf[2][0x50] & 0x01)
+    if (dev->pci_conf_sb[1][0x50] & 0x01)
     {
         ide_pri_enable();
         ide_sec_enable();
@@ -109,7 +109,7 @@ aladdin_iii_write(int func, int addr, uint8_t val, void *priv)
 {
     aladdin_iii_t *dev = (aladdin_iii_t *)priv;
 
-    dev->pci_conf[0][addr] = val;
+    dev->pci_conf[addr] = val;
 
     switch (addr)
     {
@@ -142,7 +142,7 @@ aladdin_iii_write(int func, int addr, uint8_t val, void *priv)
     case 0x6a:
     case 0x6c:
     case 0x6e:
-        spd_write_drbs(dev->pci_conf[0], 0x60, 0x6f, 2);
+        spd_write_drbs(dev->pci_conf, 0x60, 0x6f, 2);
         break;
     }
     pclog("M1521-NB: dev->regs[%02x] = %02x\n", addr, val);
@@ -153,7 +153,7 @@ aladdin_iii_read(int func, int addr, void *priv)
 {
     aladdin_iii_t *dev = (aladdin_iii_t *)priv;
 
-    return dev->pci_conf[0][addr];
+    return dev->pci_conf[addr];
 }
 
 static void
@@ -163,7 +163,7 @@ aladdin_iii_sb_write(int func, int addr, uint8_t val, void *priv)
 
     if (!func)
     {
-        dev->pci_conf[1][addr] = val;
+        dev->pci_conf_sb[0][addr] = val;
         switch (addr)
         {
         case 0x43:
@@ -201,17 +201,14 @@ aladdin_iii_sb_write(int func, int addr, uint8_t val, void *priv)
     }
     else
     {
-        if (dev->pci_conf[1][0x46] & 0x10)
+        dev->pci_conf_sb[1][addr] = val;
+        switch (addr)
         {
-            dev->pci_conf[2][addr] = val;
-            switch (addr)
-            {
-            case 0x50:
-                aladdin_iii_ide_handler(dev);
-                break;
-            }
-            pclog("M1523-IDE: dev->regs[%02x] = %02x\n", addr, val);
+        case 0x50:
+            //aladdin_iii_ide_handler(dev);
+            break;
         }
+        pclog("M1523-IDE: dev->regs[%02x] = %02x\n", addr, val);
     }
 }
 
@@ -220,7 +217,7 @@ aladdin_iii_sb_read(int func, int addr, void *priv)
 {
     aladdin_iii_t *dev = (aladdin_iii_t *)priv;
 
-    return (!func) ? dev->pci_conf[2][addr] : dev->pci_conf[1][addr];
+    return (!func) ? dev->pci_conf_sb[1][addr] : dev->pci_conf_sb[0][addr];
 }
 
 static void
@@ -228,16 +225,16 @@ aladdin_iii_reset(void *priv)
 {
     aladdin_iii_t *dev = (aladdin_iii_t *)priv;
 
-    dev->pci_conf[0][0x00] = 0xb9;
-    dev->pci_conf[0][0x01] = 0x10;
-    dev->pci_conf[0][0x02] = 0x21;
-    dev->pci_conf[0][0x03] = 0x15;
-    dev->pci_conf[0][0x04] = 0x06;
-    dev->pci_conf[0][0x07] = 0x07;
-    dev->pci_conf[0][0x08] = 0x01;
-    dev->pci_conf[0][0x0b] = 0x06;
-    dev->pci_conf[0][0x0d] = 0x20;
-    dev->pci_conf[0][0x5a] = 0x20;
+    dev->pci_conf[0x00] = 0xb9;
+    dev->pci_conf[0x01] = 0x10;
+    dev->pci_conf[0x02] = 0x21;
+    dev->pci_conf[0x03] = 0x15;
+    dev->pci_conf[0x04] = 0x06;
+    dev->pci_conf[0x07] = 0x07;
+    dev->pci_conf[0x08] = 0x01;
+    dev->pci_conf[0x0b] = 0x06;
+    dev->pci_conf[0x0d] = 0x20;
+    dev->pci_conf[0x5a] = 0x20;
 
     aladdin_iii_write(0, 0x42, 0x00, dev);
     aladdin_iii_write(0, 0x47, 0x00, dev);
@@ -247,14 +244,14 @@ aladdin_iii_reset(void *priv)
     aladdin_iii_write(0, 0x4e, 0x00, dev);
     aladdin_iii_write(0, 0x4f, 0x00, dev);
 
-    dev->pci_conf[1][0x00] = 0xb9;
-    dev->pci_conf[1][0x01] = 0x10;
-    dev->pci_conf[1][0x02] = 0x23;
-    dev->pci_conf[1][0x03] = 0x15;
-    dev->pci_conf[1][0x07] = 0x02;
-    dev->pci_conf[1][0x0a] = 0x01;
-    dev->pci_conf[1][0x0b] = 0x06;
-    dev->pci_conf[1][0x0e] = 0x80;
+    dev->pci_conf_sb[0][0x00] = 0xb9;
+    dev->pci_conf_sb[0][0x01] = 0x10;
+    dev->pci_conf_sb[0][0x02] = 0x23;
+    dev->pci_conf_sb[0][0x03] = 0x15;
+    dev->pci_conf_sb[0][0x07] = 0x02;
+    dev->pci_conf_sb[0][0x0a] = 0x01;
+    dev->pci_conf_sb[0][0x0b] = 0x06;
+    dev->pci_conf_sb[0][0x0e] = 0x80;
 
     aladdin_iii_sb_write(0, 0x43, 0x00, dev);
     aladdin_iii_sb_write(0, 0x48, 0x00, dev);
@@ -263,29 +260,29 @@ aladdin_iii_reset(void *priv)
     aladdin_iii_sb_write(0, 0x51, 0x00, dev);
     aladdin_iii_sb_write(0, 0x56, 0x00, dev);
 
-    dev->pci_conf[2][0x00] = 0xb9;
-    dev->pci_conf[2][0x01] = 0x10;
-    dev->pci_conf[2][0x02] = 0x19;
-    dev->pci_conf[2][0x03] = 0x52;
-    dev->pci_conf[2][0x06] = 0x02;
-    dev->pci_conf[2][0x07] = 0x80;
-    dev->pci_conf[2][0x09] = 0xfa;
-    dev->pci_conf[2][0x0a] = 0x01;
-    dev->pci_conf[2][0x0b] = 0x01;
-    dev->pci_conf[2][0x10] = 0xf1;
-    dev->pci_conf[2][0x11] = 0x01;
-    dev->pci_conf[2][0x14] = 0xf5;
-    dev->pci_conf[2][0x15] = 0x03;
-    dev->pci_conf[2][0x18] = 0x71;
-    dev->pci_conf[2][0x19] = 0x01;
-    dev->pci_conf[2][0x20] = 0x01;
-    dev->pci_conf[2][0x21] = 0xf0;
-    dev->pci_conf[2][0x3d] = 0x01;
-    dev->pci_conf[2][0x3e] = 0x02;
-    dev->pci_conf[2][0x3f] = 0x04;
-    ide_pri_disable();
-    ide_sec_disable();
-    aladdin_iii_sb_write(1, 0x50, 0x00, dev);
+    dev->pci_conf_sb[1][0x00] = 0xb9;
+    dev->pci_conf_sb[1][0x01] = 0x10;
+    dev->pci_conf_sb[1][0x02] = 0x19;
+    dev->pci_conf_sb[1][0x03] = 0x52;
+    dev->pci_conf_sb[1][0x06] = 0x02;
+    dev->pci_conf_sb[1][0x07] = 0x80;
+    dev->pci_conf_sb[1][0x09] = 0xfa;
+    dev->pci_conf_sb[1][0x0a] = 0x01;
+    dev->pci_conf_sb[1][0x0b] = 0x01;
+    dev->pci_conf_sb[1][0x10] = 0xf1;
+    dev->pci_conf_sb[1][0x11] = 0x01;
+    dev->pci_conf_sb[1][0x14] = 0xf5;
+    dev->pci_conf_sb[1][0x15] = 0x03;
+    dev->pci_conf_sb[1][0x18] = 0x71;
+    dev->pci_conf_sb[1][0x19] = 0x01;
+    dev->pci_conf_sb[1][0x20] = 0x01;
+    dev->pci_conf_sb[1][0x21] = 0xf0;
+    dev->pci_conf_sb[1][0x3d] = 0x01;
+    dev->pci_conf_sb[1][0x3e] = 0x02;
+    dev->pci_conf_sb[1][0x3f] = 0x04;
+    //ide_pri_disable();
+    //ide_sec_disable();
+    //aladdin_iii_sb_write(1, 0x50, 0x00, dev);
 }
 
 static void
