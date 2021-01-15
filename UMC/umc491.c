@@ -8,7 +8,8 @@
  *
  *		Implementation of the UMC 491/493 chipset.
  *
- *
+ *      Note: This chipset has no datasheet, everything were done via
+ *      reverse engineering the BIOS of various machines using it.
  *
  *      Authors: Tiseno100
  *
